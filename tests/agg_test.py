@@ -485,7 +485,10 @@ def test_format_xarray_and_list(df_local):
 @pytest.mark.parametrize("offset", [0, 1])
 def test_list_sum(offset):
     data = [1, 2, None], None, [], [1, 3, 4, 5]
-    df = vaex.from_arrays(i=pa.array(data).slice(offset))
+    array = pa.array(data).slice(offset)
+    print(f"offset: {offset} --> {array=}")
+    df = vaex.from_arrays(i=array)
+    print(f"offset: {offset} --> {df=}")
     assert df.i.ndim == 1
     assert df.i.sum() == [16, 13][offset]
     assert df.i.sum(axis=1).tolist() == [3, None, 0, 13][offset:]

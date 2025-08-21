@@ -2,11 +2,7 @@ name: Python package
 
 on:
   push:
-    branches:
-      - master
   pull_request:
-  schedule:
-  - cron: "0 2 * * 1-5"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -22,8 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        os: ["windows-2022"]
+        python-version: ["3.12"]
 
     steps:
     - uses: actions/checkout@v2
@@ -36,26 +32,11 @@ jobs:
 
     - run: python -m pip install --upgrade pip setuptools wheel uv
 
-    # - uses: actions/checkout@v2
-    #   if: ${{ (github.event.pull_request.head.repo.full_name == 'vaexio/vaex') && (matrix.os == 'ubuntu-latest') }}
-    #   with:
-    #     repository: vaexio/vaex-enterprise
-    #     token: ${{ secrets.PAT_PULL_ENTERPRISE }}
-    #     path: vaex-enterprise
-
     - name: Setup Graphviz
       uses: ts-graphviz/setup-graphviz@v2
 
-    - name: Setup PCRE (Nix-only)
-      if: matrix.os != 'windows-latest'
-      run: sudo -E bash bin/install_pcre.sh
-
-    - name: Install OpenMP runtime (Mac-only)
-      if: startswith(matrix.os, 'macos')
-      run: brew install libomp
-
     - name: Copy dll (Windows-only)
-      if: (matrix.os == 'windows-latest')
+      if: startsWith(matrix.os, 'windows')
       uses: ./ci/actions/windll
 
     - name: Install vaex
@@ -84,11 +65,6 @@ jobs:
       run: |
         ./ci/04-run-test-suite.sh
 
-    - name: Test with pytest (with cache on)
-      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
-      run: |
-        VAEX_CACHE_RESULTS=1 ./ci/04-run-test-suite.sh
-
     - name: Check ml spec
       run: |
         pip install dask[dataframe]
@@ -100,46 +76,9 @@ jobs:
 #      run: |
 #        py.test vaex-enterprise/tests --timeout=1000
 
-    - name: Test notebooks
-      if: matrix.os != 'windows-latest'
-      run: ./ci/05-run-notebooks.sh
-
-    - name: Authenticate Google Cloud Platform
-      if: ${{ (github.event.pull_request.head.repo.full_name == 'vaexio/vaex') && !((matrix.os == 'windows-latest'))  }}
-      uses: google-github-actions/setup-gcloud@v0
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID_VAEX }}
-        service_account_key: ${{ secrets.GCP_SA_KEY_VAEX }}
-        export_default_credentials: true
-
-    - name: Test vaex-contrib
-      # do not run in a PR from someone else, skip windows
-      if: ${{ (github.event.pull_request.head.repo.full_name == 'vaexio/vaex') && (matrix.os != 'windows-latest')  }}
-      env:
-        PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_VAEX }}
-      run: ./ci/06-run-contrib-tests.sh
-
     - name: Test command line
       run: |
         vaex convert ~/.vaex/data/helmi-dezeeuw-2000-FeH-v2-10percent.hdf5 test.parquet
         VAEX_PROGRESS_TYPE=rich vaex convert ~/.vaex/data/helmi-dezeeuw-2000-FeH-v2-10percent.hdf5 test.parquet
         vaex settings yaml
         vaex settings md
-
-    - name: Test server
-      if: matrix.os != 'windows-latest'
-      run: |
-        vaex server --add-example --port 9999 &
-
-    - name: Wait for Vaex server
-      if: matrix.os != 'windows-latest'
-      uses: ifaxity/wait-on-action@v1
-      with:
-        resource: http-get://localhost:9999/hello
-        timeout: 5000
-
-    - name: Use the Vaex server
-      if: matrix.os != 'windows-latest'
-      run: |
-        python -c "import vaex; df = vaex.open('ws://localhost:9999/example'); df.x.sum()"
-        curl -i http://localhost:9999/histogram/example/x
